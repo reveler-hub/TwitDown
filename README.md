@@ -1,14 +1,14 @@
-# TwiDown
+# TwitDown
 
 A watcher and downloader for X.com (Twitter) broadcasts. Polls a target user's profile using Camoufox, scrapes broadcast links from their tweets, and downloads them with `yt-dlp`. Keeps track of what's already been downloaded so nothing gets re-downloaded on restart.
 
-> **Watcher script:** TwiDown is designed to run continuously in the background alongside other scripts in this suite. See [Running in the background](#running-in-the-background) below.
+> **Watcher script:** TwitDown is designed to run continuously in the background alongside other scripts in this suite. See [Running in the background](#running-in-the-background) below.
 
 ## Features
 
 - **Broadcast detection** — scrapes the target user's X.com profile for broadcast links using Camoufox (handles X's heavy JavaScript rendering)
 - **Seen ID tracking** — saves downloaded broadcast IDs to a file so restarts never re-download the same content
-- **One-off backfill** — on first run, scrolls back through the profile to catch broadcasts that happened before TwiDown was set up
+- **One-off backfill** — on first run, scrolls back through the profile to catch broadcasts that happened before TwitDown was set up
 - **Robust scroll-and-wait** — scrolls the page multiple times to ensure all tweets load before scraping
 - **Configurable poll interval** — checks every `POLL_INTERVAL` seconds (default: 2 hours)
 
@@ -23,30 +23,32 @@ If you don't have Python installed:
 - **Arch Based**: `sudo pacman -Syu python python-pip python-venv git curl`
 - **Fedora**: `sudo dnf install python3 python3-pip python3-venv git curl`
 
-### Step 2 — Download and set up TwiDown
+### Step 2 — Download and set up TwitDown
 
 **Windows (Command Prompt or PowerShell):**
 ```
 git clone https://github.com/reveler-hub/TwitDown.git
+cd twidown
 
 python -m venv venv
 venv\Scripts\activate
 pip install yt-dlp yt-dlp-ejs deno camoufox
-# Move TwiDown.py into the venv folder if you want to keep everything tidy.
+# Move TwitDown.py into the venv folder if you want to keep everything tidy.
 
-python TwiDown.py
+python TwitDown.py
 ```
 
 **macOS / Linux:**
 ```bash
 git clone https://github.com/reveler-hub/TwitDown.git
+cd twidown
 
 python3 -m venv venv
 source venv/bin/activate
 pip install yt-dlp yt-dlp-ejs deno camoufox
-# Move TwiDown.py into the venv folder if you want to keep everything tidy.
+# Move TwitDown.py into the venv folder if you want to keep everything tidy.
 
-python TwiDown.py
+python TwitDown.py
 ```
 
 > **What is a venv?** A virtual environment is an isolated folder that holds Python packages just for this project, so they don't conflict with anything else on your system. You only need to create it once.
@@ -55,7 +57,7 @@ python TwiDown.py
 
 ### Sharing a venv with other scripts
 
-If you're already running TikTube, DownTube, or Chaturdown, you can reuse their venv instead of creating a new one. Open `TwiDown.py` in a text editor and change the first line (the shebang) to point at your existing venv's Python:
+If you're already running TikTube, DownTube, or Chaturdown, you can reuse their venv instead of creating a new one. Open `TwitDown.py` in a text editor and change the first line (the shebang) to point at your existing venv's Python:
 
 ```
 #!/path/to/your/existing/venv/bin/python3
@@ -65,7 +67,7 @@ On Windows the path will look like `C:\path\to\venv\Scripts\python.exe`. Once se
 
 ## Configuration
 
-Open `TwiDown.py` in a text editor and edit the config block near the top:
+Open `TwitDown.py` in a text editor and edit the config block near the top:
 
 ```python
 TARGET_USERNAME  = "YOUR_TARGET_USERNAME"   # X.com username to monitor (no @)
@@ -99,23 +101,23 @@ See the other scripts in this suite: [TikTube](https://github.com/reveler-hub/Ti
 
 ## First-time login
 
-TwiDown uses a saved browser profile to stay logged in to X.com. On first run you need to log in manually so the profile gets created with your session:
+TwitDown uses a saved browser profile to stay logged in to X.com. On first run you need to log in manually so the profile gets created with your session:
 
 1. Temporarily set `headless=True` to `headless=False` in the Camoufox launch call
-2. Run `python TwiDown.py` — a browser window will open
+2. Run `python TwitDown.py` — a browser window will open
 3. Log in to X.com as you normally would
 4. Close the browser or wait for the script to continue
 5. Set `headless` back to `True`
 
-TwiDown will use that saved session for all future polls.
+TwitDown will use that saved session for all future polls.
 
 ## Usage
 
 ```bash
-python TwiDown.py
+python TwitDown.py
 ```
 
-TwiDown will:
+TwitDown will:
 1. Load the list of already-downloaded broadcast IDs
 2. On first run, scroll back through the target profile to catch any missed broadcasts
 3. Download any new broadcasts found
@@ -123,7 +125,7 @@ TwiDown will:
 
 ## Running in the background
 
-TwiDown needs to keep running to catch new broadcasts. Here are the best ways to do that on each OS:
+TwitDown needs to keep running to catch new broadcasts. Here are the best ways to do that on each OS:
 
 ### Windows
 
@@ -131,21 +133,21 @@ TwiDown needs to keep running to catch new broadcasts. Here are the best ways to
 
 Open PowerShell and run:
 ```powershell
-Start-Process python -ArgumentList "TwiDown.py" -WorkingDirectory "C:\path\to\twidown"
+Start-Process python -ArgumentList "TwitDown.py" -WorkingDirectory "C:\path\to\twidown"
 ```
 
 **Option 2 — Windows Terminal with a dedicated tab**
 
-Open Windows Terminal, open a new tab, navigate to the folder and run `python TwiDown.py`. Keep that tab open.
+Open Windows Terminal, open a new tab, navigate to the folder and run `python TwitDown.py`. Keep that tab open.
 
 **Option 3 — Task Scheduler (runs on login, no window)**
 
 1. Open **Task Scheduler** (search for it in the Start menu)
 2. Click **Create Basic Task**
-3. Name it `TwiDown`, set trigger to **When I log on**
+3. Name it `TwitDown`, set trigger to **When I log on**
 4. Action: **Start a program**
    - Program: `C:\path\to\twidown\venv\Scripts\pythonw.exe`
-   - Arguments: `TwiDown.py`
+   - Arguments: `TwitDown.py`
    - Start in: `C:\path\to\twidown`
 5. Check **Open the Properties dialog** and tick **Run whether user is logged on or not**
 
@@ -158,14 +160,14 @@ If you have WSL installed, use tmux inside it (see Linux section below).
 **tmux** (recommended)
 ```bash
 tmux new -s twidown
-python TwiDown.py
+python TwitDown.py
 # Detach: Ctrl+B then D
 # Reattach later: tmux attach -t twidown
 ```
 
 **nohup** (simple, saves output to a log file)
 ```bash
-nohup python TwiDown.py > twidown.log 2>&1 &
+nohup python TwitDown.py > twidown.log 2>&1 &
 tail -f twidown.log
 ```
 
@@ -174,10 +176,10 @@ tail -f twidown.log
 Create `/etc/systemd/system/twidown.service`:
 ```ini
 [Unit]
-Description=TwiDown X.com Watcher
+Description=TwitDown X.com Watcher
 
 [Service]
-ExecStart=/path/to/venv/bin/python3 /path/to/TwiDown.py
+ExecStart=/path/to/venv/bin/python3 /path/to/TwitDown.py
 WorkingDirectory=/path/to/twidown
 Restart=on-failure
 User=youruser
@@ -196,7 +198,7 @@ sudo journalctl -fu twidown
 ```bash
 brew install tmux
 tmux new -s twidown
-python TwiDown.py
+python TwitDown.py
 # Detach: Ctrl+B then D
 # Reattach later: tmux attach -t twidown
 ```
@@ -213,7 +215,7 @@ Create `~/Library/LaunchAgents/com.user.twidown.plist`:
     <key>ProgramArguments</key>
     <array>
         <string>/path/to/venv/bin/python3</string>
-        <string>/path/to/TwiDown.py</string>
+        <string>/path/to/TwitDown.py</string>
     </array>
     <key>WorkingDirectory</key><string>/path/to/twidown</string>
     <key>RunAtLoad</key><true/>
@@ -234,7 +236,7 @@ tail -f /tmp/twidown.log
 tmux new-session -d -s watchers
 tmux new-window -t watchers -n downtube   'python DownTube.py'
 tmux new-window -t watchers -n chaturdown 'python Chaturdown.py'
-tmux new-window -t watchers -n twidown    'python TwiDown.py'
+tmux new-window -t watchers -n twidown    'python TwitDown.py'
 tmux attach -t watchers
 # Switch between windows: Ctrl+B then 0, 1, 2
 ```
