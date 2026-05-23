@@ -28,7 +28,7 @@ If you don't have Python installed:
 **Windows (Command Prompt or PowerShell):**
 ```
 git clone https://github.com/reveler-hub/TwitDown.git
-cd twidown
+cd TwitDown
 
 python -m venv venv
 venv\Scripts\activate
@@ -41,7 +41,7 @@ python TwitDown.py
 **macOS / Linux:**
 ```bash
 git clone https://github.com/reveler-hub/TwitDown.git
-cd twidown
+cd TwitDown
 
 python3 -m venv venv
 source venv/bin/activate
@@ -133,7 +133,7 @@ TwitDown needs to keep running to catch new broadcasts. Here are the best ways t
 
 Open PowerShell and run:
 ```powershell
-Start-Process python -ArgumentList "TwitDown.py" -WorkingDirectory "C:\path\to\twidown"
+Start-Process python -ArgumentList "TwitDown.py" -WorkingDirectory "C:\path\to\TwitDown"
 ```
 
 **Option 2 — Windows Terminal with a dedicated tab**
@@ -146,9 +146,9 @@ Open Windows Terminal, open a new tab, navigate to the folder and run `python Tw
 2. Click **Create Basic Task**
 3. Name it `TwitDown`, set trigger to **When I log on**
 4. Action: **Start a program**
-   - Program: `C:\path\to\twidown\venv\Scripts\pythonw.exe`
+   - Program: `C:\path\to\TwitDown\venv\Scripts\pythonw.exe`
    - Arguments: `TwitDown.py`
-   - Start in: `C:\path\to\twidown`
+   - Start in: `C:\path\to\TwitDown`
 5. Check **Open the Properties dialog** and tick **Run whether user is logged on or not**
 
 **Option 4 — WSL (Windows Subsystem for Linux)**
@@ -159,28 +159,28 @@ If you have WSL installed, use tmux inside it (see Linux section below).
 
 **tmux** (recommended)
 ```bash
-tmux new -s twidown
+tmux new -s TwitDown
 python TwitDown.py
 # Detach: Ctrl+B then D
-# Reattach later: tmux attach -t twidown
+# Reattach later: tmux attach -t TwitDown
 ```
 
 **nohup** (simple, saves output to a log file)
 ```bash
-nohup python TwitDown.py > twidown.log 2>&1 &
-tail -f twidown.log
+nohup python TwitDown.py > TwitDown.log 2>&1 &
+tail -f TwitDown.log
 ```
 
 **systemd service** (survives reboots)
 
-Create `/etc/systemd/system/twidown.service`:
+Create `/etc/systemd/system/TwitDown.service`:
 ```ini
 [Unit]
 Description=TwitDown X.com Watcher
 
 [Service]
 ExecStart=/path/to/venv/bin/python3 /path/to/TwitDown.py
-WorkingDirectory=/path/to/twidown
+WorkingDirectory=/path/to/TwitDown
 Restart=on-failure
 User=youruser
 
@@ -188,8 +188,8 @@ User=youruser
 WantedBy=multi-user.target
 ```
 ```bash
-sudo systemctl enable --now twidown
-sudo journalctl -fu twidown
+sudo systemctl enable --now TwitDown
+sudo journalctl -fu TwitDown
 ```
 
 ### macOS
@@ -197,37 +197,37 @@ sudo journalctl -fu twidown
 **tmux** (recommended)
 ```bash
 brew install tmux
-tmux new -s twidown
+tmux new -s TwitDown
 python TwitDown.py
 # Detach: Ctrl+B then D
-# Reattach later: tmux attach -t twidown
+# Reattach later: tmux attach -t TwitDown
 ```
 
 **launchd** (runs on login, survives reboots)
 
-Create `~/Library/LaunchAgents/com.user.twidown.plist`:
+Create `~/Library/LaunchAgents/com.user.TwitDown.plist`:
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>Label</key><string>com.user.twidown</string>
+    <key>Label</key><string>com.user.TwitDown</string>
     <key>ProgramArguments</key>
     <array>
         <string>/path/to/venv/bin/python3</string>
         <string>/path/to/TwitDown.py</string>
     </array>
-    <key>WorkingDirectory</key><string>/path/to/twidown</string>
+    <key>WorkingDirectory</key><string>/path/to/TwitDown</string>
     <key>RunAtLoad</key><true/>
     <key>KeepAlive</key><true/>
-    <key>StandardOutPath</key><string>/tmp/twidown.log</string>
-    <key>StandardErrorPath</key><string>/tmp/twidown.log</string>
+    <key>StandardOutPath</key><string>/tmp/TwitDown.log</string>
+    <key>StandardErrorPath</key><string>/tmp/TwitDown.log</string>
 </dict>
 </plist>
 ```
 ```bash
-launchctl load ~/Library/LaunchAgents/com.user.twidown.plist
-tail -f /tmp/twidown.log
+launchctl load ~/Library/LaunchAgents/com.user.TwitDown.plist
+tail -f /tmp/TwitDown.log
 ```
 
 ### Running all watcher scripts at once (Linux/macOS with tmux)
@@ -236,7 +236,7 @@ tail -f /tmp/twidown.log
 tmux new-session -d -s watchers
 tmux new-window -t watchers -n downtube   'python DownTube.py'
 tmux new-window -t watchers -n chaturdown 'python Chaturdown.py'
-tmux new-window -t watchers -n twidown    'python TwitDown.py'
+tmux new-window -t watchers -n TwitDown    'python TwitDown.py'
 tmux attach -t watchers
 # Switch between windows: Ctrl+B then 0, 1, 2
 ```
