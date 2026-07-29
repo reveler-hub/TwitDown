@@ -1,0 +1,15 @@
+# This file is checked for changes automatically — no restart needed.
+#
+# Optional: set how often (in seconds) this file itself is re-checked.
+# If omitted, the script's DEFAULT_USERS_RELOAD_INTERVAL is used (120s / 2 min).
+# You can change this value later too — it takes effect on the next check.
+interval=120
+
+# Optional: true/false. If true, removing a channel from a section
+# immediately stops its in-progress download (of that type) on the next
+# check. If false (default), a removed users active download is left
+# to finish naturally instead of being cut off.
+stop_removed=false
+
+user1
+user2
