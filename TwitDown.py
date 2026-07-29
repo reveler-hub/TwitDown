@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+# #!/usr/bin/env bash
 """:"
 exec "$(dirname "$0")/X_Venv/bin/python3" "$0" "$@"
 ":"""
@@ -432,19 +432,34 @@ def _log_download(filename: str) -> None:
     DOWNLOAD_LOG.write_text("\n".join(pruned) + "\n")
 
 def download_broadcast(broadcast_url: str, label: str) -> bool:
-    """Download a broadcast via yt-dlp, update state."""
-    log(f"[{label}] Downloading {broadcast_url}")
-    state["users"][label]["text"] = "⬇️ Downloading "
-    state["users"][label]["color"] = 3
-    state["users"][label]["extra"] = "Starting..."
-
-    output_dir = VIDEOS_DIR / label
+    output_dir = VIDEOS_DIR_BASE / label
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    now = datetime.datetime.now()
-    clean_filename = f"{label}_{now.strftime('%d-%m-%Y_%H-%M')}.mp4"
-    output_path = output_dir / clean_filename
+    # X_Watcher: Safely extract broadcast ID for logging
+    try:
+        broadcast_id = broadcast_url.split("/i/broadcasts/")[-1].split("?")[0]
+    except Exception:
+        broadcast_id = "unknown"
 
+    # X_Watcher: File naming and collision prevention loop
+    now = datetime.datetime.now()
+    clean_filename = f"{label}_({now.strftime('%d-%m-%Y_%H-%M')}).mp4"
+    output_path = output_dir / clean_filename
+    counter = 1
+    while output_path.exists():
+        clean_filename = f"{label}_({now.strftime('%d-%m-%Y_%H-%M')})_{counter}.mp4"
+        output_path = output_dir / clean_filename
+        counter += 1
+
+    log(f"[{label}] 📥 Downloading {broadcast_id} → {clean_filename}")
+
+    # TwitDown: TUI State updates
+    state["users"][label]["text"] = "⬇️ Downloading "
+    state["users"][label]["color"] = 3
+    state["users"][label]["extra"] = f"⬇️ {clean_filename}"
+    state["footer"] = f"⚡ STATUS: Downloading broadcast from @{label}..."
+
+    # X_Watcher: Base yt-dlp arguments
     cmd = YTDLP_CMD + [
         broadcast_url,
         "--cookies", str(COOKIES_FILE),
@@ -459,68 +474,33 @@ def download_broadcast(broadcast_url: str, label: str) -> bool:
     if PROXY:
         cmd += ["--proxy", PROXY]
 
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
-    state["active_processes"].add(process)
-    state["active_user"] = label
-
-    _did_download = False
-    final_filename = None
-
     try:
-        for line in process.stdout:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            # Update progress from yt-dlp output
-            if "[download]" in stripped:
-                match = re.search(r'([\d.]+)%', stripped)
-                if match:
-                    percent = match.group(1)
-                    bar = ("█" * int(float(percent)//10)) + ("░" * (10 - int(float(percent)//10)))
-                    state["users"][label]["extra"] = f"[{bar}] {percent}%"
-                    _did_download = True
-                elif " Destination: " in stripped:
-                    # Capture final filename if not muxed later
-                    m = re.search(r'Destination:\s*(.+?)$', stripped)
-                    if m:
-                        final_filename = Path(m.group(1)).name
-            elif "[Merger]" in stripped and "Merging formats into" in stripped:
-                m = re.search(r'into\s+"(.+?)"', stripped)
-                if m:
-                    final_filename = Path(m.group(1)).name
-                _did_download = True
-            # log everything else (but skip noisy has-been-downloaded)
-            if not _did_download and "has already been" not in stripped:
-                log(f"[{label}] {stripped}")
-    except Exception as e:
-        log(f"[{label}] Error while reading output: {e}")
+        # X_Watcher: Use direct subprocess.run with timeout and output capture
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=900
+        )
 
-    process.wait()
-    state["active_processes"].discard(process)
-    if state["active_user"] == label:
-        state["active_user"] = None
-
-    # Reset status
-    if label in state["users"]:
-        if process.returncode == 0 and _did_download:
+        if result.returncode == 0:
+            _log_download(clean_filename)
+            log(f"[{label}] ✅ Saved: {clean_filename}")
             state["users"][label]["text"] = "✅ Downloaded  "
             state["users"][label]["color"] = 1
-            state["users"][label]["extra"] = "📁 /Videos/X"
-            if final_filename:
-                _log_download(final_filename)
+            state["users"][label]["extra"] = "✅ Complete"
             return True
         else:
+            # X_Watcher: Truncated error logging
+            log(f"[{label}] ❌ yt-dlp failed: {result.stderr[:400] or result.stdout[:400]}")
             state["users"][label]["text"] = "❌ Failed     "
             state["users"][label]["color"] = 2
             state["users"][label]["extra"] = "will retry"
             return False
-    return False
+
+    except Exception as e:
+        log(f"[{label}] ❌ Download exception: {e}")
+        state["users"][label]["text"] = "❌ Error     "
+        state["users"][label]["color"] = 2
+        state["users"][label]["extra"] = "exception"
+        return False
 
 # ========================== WORKER THREAD ==========================
 
