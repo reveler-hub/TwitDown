@@ -1,177 +1,152 @@
 # TwitDown
 
-A watcher and downloader for X.com (Twitter) broadcasts. Polls a target user's profile using Camoufox, scrapes broadcast links from their tweets, and downloads them with `yt-dlp`. Keeps track of what's already been downloaded so nothing gets re-downloaded on restart.
+A multi-user watcher and downloader for X.com (Twitter) broadcasts. Runs as a terminal dashboard (curses TUI), polls a list of X profiles via a persistent [Camoufox](https://github.com/daijro/camoufox) browser session, scrapes broadcast links from each user's timeline, and downloads new ones with `yt-dlp`. Already-downloaded broadcasts are never re-fetched, cookies refresh themselves automatically, and yt-dlp/deno stay up to date on their own.
 
-> **Watcher script:** TwitDown is designed to run continuously in the background alongside other scripts in this suite. See [Running in the background](#running-in-the-background) below.
+> **Watcher script:** TwitDown is meant to run continuously in the background. See [Running in the background](#running-in-the-background).
 
 ## Features
 
-- **Broadcast detection** — scrapes the target user's X.com profile for broadcast links using Camoufox (handles X's heavy JavaScript rendering)
-- **Seen ID tracking** — saves downloaded broadcast IDs to a file so restarts never re-download the same content
-- **One-off backfill** — on first run, scrolls back through the profile to catch broadcasts that happened before TwitDown was set up
-- **Robust scroll-and-wait** — scrolls the page multiple times to ensure all tweets load before scraping
-- **Configurable poll interval** — checks every `POLL_INTERVAL` seconds (default: 2 hours)
+- **Multi-user monitoring** — watches any number of X profiles at once, read from `Users.txt`, reloaded live so you can add/remove users without restarting
+- **Broadcast detection** — scrapes each profile's timeline for `/i/broadcasts/` links via a persistent Camoufox context, scrolling to load lazy content and stopping once it hits a previously-seen broadcast
+- **Seen ID tracking** — `X_Seen.json` stores every downloaded broadcast ID so restarts never re-download the same content
+- **Self-refreshing cookies** — once you've logged in once via `Login.py`, TwitDown automatically re-exports fresh cookies (and a matching User-Agent) from the same browser profile every 72 hours, no manual login needed again
+- **Auto-updating** — `yt-dlp` and `deno` upgrade themselves every few days, even mid-download
+- **Optional proxy support** — one `PROXY` setting routes both the scraping browser *and* yt-dlp through the same proxy, with the User-Agent kept in sync so the two don't mismatch
+- **Live curses TUI** — per-user status table (checking / downloading / offline / failed) with a footer showing cycle progress; `Q` shuts everything down gracefully
+- **Startup validation** — checks for Camoufox, yt-dlp, `Users.txt`, at least one user, and valid cookies before it ever touches the terminal, with a clear fix for each
+
+## Requirements
+
+TwitDown relies on `curses` and a bash-based launcher shebang, so it's built for **Linux and macOS**. On Windows, run it inside **WSL** (Windows Subsystem for Linux) using the Linux instructions below.
 
 ## Installation
 
-### Step 1 — Install Python
+### Step 1 — Install Python and git
 
-If you don't have Python installed:
-- **Windows**: Download from [python.org](https://www.python.org/downloads/) — check **"Add Python to PATH"** during install
-- **macOS**: `brew install python` or download from [python.org](https://www.python.org/downloads/)
 - **Ubuntu/Debian**: `sudo apt install python3 python3-pip python3-venv git curl`
-- **Arch Based**: `sudo pacman -Syu python python-pip python-venv git curl`
+- **Arch-based**: `sudo pacman -Syu python python-pip python-venv git curl`
 - **Fedora**: `sudo dnf install python3 python3-pip python3-venv git curl`
+- **macOS**: `brew install python git`
+- **Windows**: install [WSL](https://learn.microsoft.com/en-us/windows/wsl/install), then follow the Linux steps inside your WSL terminal
 
-### Step 2 — Download and set up TwitDown
+### Step 2 — Download and run setup
 
-**Windows (Command Prompt or PowerShell):**
-```
-git clone https://github.com/reveler-hub/TwitDown.git
-cd TwitDown
-
-python -m venv venv
-venv\Scripts\activate
-pip install yt-dlp yt-dlp-ejs deno camoufox
-# Move TwitDown.py into the venv folder if you want to keep everything tidy.
-
-python TwitDown.py
-```
-
-**macOS / Linux:**
 ```bash
 git clone https://github.com/reveler-hub/TwitDown.git
 cd TwitDown
-
-python3 -m venv venv
-source venv/bin/activate
-pip install yt-dlp yt-dlp-ejs deno camoufox
-# Move TwitDown.py into the venv folder if you want to keep everything tidy.
-
-python TwitDown.py
+bash setup.sh
 ```
 
-> **What is a venv?** A virtual environment is an isolated folder that holds Python packages just for this project, so they don't conflict with anything else on your system. You only need to create it once.
+`setup.sh` will:
+1. Create a virtual environment in `X_Venv/`
+2. Install `yt-dlp` and `camoufox` into it
+3. Download the Camoufox browser binary
+4. Check for `deno` (used by yt-dlp for JS-based extraction) and install it if missing
+5. Make `TwitDown.py` and `Login.py` executable
 
-> **Next time you open a terminal**, activate the venv again before running: `venv\Scripts\activate` (Windows) or `source venv/bin/activate` (macOS/Linux).
+Because `TwitDown.py` and `Login.py` start with a shebang that execs `X_Venv/bin/python3` directly, you run them with `./TwitDown.py`, **not** `python TwitDown.py` — no need to manually activate the venv.
 
 ### Sharing a venv with other scripts
 
-If you're already running TikTube, DownTube, or Chaturdown, you can reuse their venv instead of creating a new one. Open `TwitDown.py` in a text editor and change the first line (the shebang) to point at your existing venv's Python:
+If you're already running TikTube, DownTube, or Chaturdown, you don't need a second venv. Open `TwitDown.py` (and `Login.py`) and change the shebang line at the top to point at your existing venv's Python:
 
 ```
 #!/path/to/your/existing/venv/bin/python3
 ```
 
-On Windows the path will look like `C:\path\to\venv\Scripts\python.exe`. Once set, the script always uses that venv automatically.
-
-## Configuration
-
-Open `TwitDown.py` in a text editor and edit the config block near the top:
-
-```python
-TARGET_USERNAME  = "YOUR_TARGET_USERNAME"   # X.com username to monitor (no @)
-
-YTDLP_EXE        = Path("/usr/local/bin/yt-dlp")
-TWITDOWN_PROFILE = Path("./Profiles/shared_profile")  # Shared profile — see below
-COOKIES_FILE     = Path("./twitdown_cookies.txt")
-SEEN_FILE        = Path("./twitdown_seen_ids.json")
-VIDEOS_DIR       = Path("./Videos/X") / TARGET_USERNAME
-```
-
-Adjust scraping behaviour:
-
-```python
-POLL_INTERVAL    = 7200   # Seconds between polls (default: 2 hours)
-SCROLLS          = 9      # Number of page scrolls to load lazy content
-SCROLL_PX        = 8000   # Pixels per scroll
-SCROLL_PAUSE     = 5.0    # Seconds to wait between scrolls
-TIMELINE_TIMEOUT = 50_000 # Milliseconds to wait for tweets to appear after page load
-```
-
-### Shared browser profile
-
-All scripts in this suite use the same browser profile for storing logins. If you're running multiple scripts, point them all at the same directory so you only need to log in once:
-
-```python
-TWITDOWN_PROFILE = Path("/your/shared/profile/path")
-```
-
-See the other scripts in this suite: [TikTube](https://github.com/reveler-hub/TikTube) · [DownTube](https://github.com/reveler-hub/DownTube) · [Chaturdown](https://github.com/reveler-hub/Chaturdown)
+Then make sure `yt-dlp` and `camoufox` are installed in that venv (`pip install yt-dlp camoufox`).
 
 ## First-time login
 
-TwitDown uses a saved browser profile to stay logged in to X.com. On first run you need to log in manually so the profile gets created with your session:
+TwitDown needs a logged-in X.com session before it can scrape or download anything.
 
-1. Temporarily set `headless=True` to `headless=False` in the Camoufox launch call
-2. Run `python TwitDown.py` — a browser window will open
-3. Log in to X.com as you normally would
-4. Close the browser or wait for the script to continue
-5. Set `headless` back to `True`
+```bash
+./Login.py
+```
 
-TwitDown will use that saved session for all future polls.
+This opens a **visible** Camoufox window:
+1. Log in to X.com as you normally would
+2. Once logged in, switch back to the terminal and press **Enter**
+3. `Login.py` exports your session to `X_Cookies.txt` and your browser's real User-Agent to `X_UserAgent.txt`, then closes the browser
+
+From then on, TwitDown reuses the same persistent profile (`X_Profile/`) to silently refresh cookies in the background — you only need to run `Login.py` again if your session gets logged out or cookies stop working.
+
+## Configuration
+
+Open `TwitDown.py` and edit the config block near the top:
+
+```python
+USERS_FILE = Path(__file__).resolve().parent / "Users.txt"   # who to watch
+
+VIDEOS_DIR_BASE = Path("./Videos/X")   # where downloads are saved
+
+POLL_MIN = 60     # minimum seconds between full check cycles
+POLL_MAX = 140    # maximum seconds between full check cycles
+
+COOKIE_REFRESH_HOURS = 72     # how often to silently refresh cookies via Camoufox
+UPDATE_INTERVAL_DAYS = 3      # how often to auto-update yt-dlp and deno (0 = disable)
+
+PROXY = ""        # e.g. "http://user:pass@host:port" or "socks5://host:port" — leave blank to disable
+```
+
+**Don't hand-edit `USER_AGENT` or `X_UserAgent.txt`.** TwitDown captures the real User-Agent Camoufox is presenting every time it refreshes cookies and writes it to `X_UserAgent.txt` automatically, so yt-dlp's requests always match the browser fingerprint tied to your cookies (and your proxy, if set). A mismatched UA is a common way sessions get flagged.
+
+### Users.txt
+
+List the X accounts to watch, one per line, under a `[users]` section. Bare usernames or `@handles` both work, and `#` starts a comment:
+
+```ini
+# How often (seconds) to reload this file for added/removed users. Default: 120
+interval = 120
+
+# If true, stop an in-progress download when that user is removed below. Default: false
+stop_removed = false
+
+[users]
+someuser
+@another_user
+# this line is ignored
+a_third_account
+```
+
+Edits to `Users.txt` are picked up automatically while TwitDown is running — no restart needed.
+
+### Proxy
+
+Setting `PROXY` routes **everything** through it — the Camoufox browser used for scraping and cookie refresh, and every `yt-dlp` download or update call — so there's no mismatch between the IP your cookies came from and the IP your downloads come from. Leave it blank and TwitDown runs exactly as before, no proxy involved.
 
 ## Usage
 
 ```bash
-python TwitDown.py
+./TwitDown.py
 ```
 
-TwitDown will:
-1. Load the list of already-downloaded broadcast IDs
-2. On first run, scroll back through the target profile to catch any missed broadcasts
-3. Download any new broadcasts found
-4. Wait for `POLL_INTERVAL` seconds and repeat
+Each cycle, TwitDown will:
+1. Reload `Users.txt` if the reload interval has passed
+2. Refresh cookies via Camoufox if they're older than `COOKIE_REFRESH_HOURS` (skipped while a download is active)
+3. Auto-update `yt-dlp`/`deno` if `UPDATE_INTERVAL_DAYS` has passed
+4. Check each user's profile for new broadcasts and download any found
+5. Sleep for a random interval between `POLL_MIN` and `POLL_MAX`, then repeat
+
+Press **Q** in the TUI to shut down gracefully — TwitDown sends a clean interrupt to any active yt-dlp download and waits for it to wrap up before exiting.
 
 ## Running in the background
 
-TwitDown needs to keep running to catch new broadcasts. Here are the best ways to do that on each OS:
-
-### Windows
-
-**Option 1 — Run in a new window that stays open (simplest)**
-
-Open PowerShell and run:
-```powershell
-Start-Process python -ArgumentList "TwitDown.py" -WorkingDirectory "C:\path\to\TwitDown"
-```
-
-**Option 2 — Windows Terminal with a dedicated tab**
-
-Open Windows Terminal, open a new tab, navigate to the folder and run `python TwitDown.py`. Keep that tab open.
-
-**Option 3 — Task Scheduler (runs on login, no window)**
-
-1. Open **Task Scheduler** (search for it in the Start menu)
-2. Click **Create Basic Task**
-3. Name it `TwitDown`, set trigger to **When I log on**
-4. Action: **Start a program**
-   - Program: `C:\path\to\TwitDown\venv\Scripts\pythonw.exe`
-   - Arguments: `TwitDown.py`
-   - Start in: `C:\path\to\TwitDown`
-5. Check **Open the Properties dialog** and tick **Run whether user is logged on or not**
-
-**Option 4 — WSL (Windows Subsystem for Linux)**
-
-If you have WSL installed, use tmux inside it (see Linux section below).
-
-### Linux
-
-**tmux** (recommended)
+### Linux / macOS — tmux (recommended)
 ```bash
 tmux new -s TwitDown
-python TwitDown.py
+./TwitDown.py
 # Detach: Ctrl+B then D
 # Reattach later: tmux attach -t TwitDown
 ```
 
-**nohup** (simple, saves output to a log file)
+### Linux / macOS — nohup
 ```bash
-nohup python TwitDown.py > TwitDown.log 2>&1 &
-tail -f TwitDown.log
+nohup ./TwitDown.py > TwitDown_nohup.log 2>&1 &
+tail -f TwitDown_nohup.log
 ```
 
-**systemd service** (survives reboots)
+### Linux — systemd service (survives reboots)
 
 Create `/etc/systemd/system/TwitDown.service`:
 ```ini
@@ -179,7 +154,7 @@ Create `/etc/systemd/system/TwitDown.service`:
 Description=TwitDown X.com Watcher
 
 [Service]
-ExecStart=/path/to/venv/bin/python3 /path/to/TwitDown.py
+ExecStart=/path/to/TwitDown/TwitDown.py
 WorkingDirectory=/path/to/TwitDown
 Restart=on-failure
 User=youruser
@@ -192,18 +167,7 @@ sudo systemctl enable --now TwitDown
 sudo journalctl -fu TwitDown
 ```
 
-### macOS
-
-**tmux** (recommended)
-```bash
-brew install tmux
-tmux new -s TwitDown
-python TwitDown.py
-# Detach: Ctrl+B then D
-# Reattach later: tmux attach -t TwitDown
-```
-
-**launchd** (runs on login, survives reboots)
+### macOS — launchd (runs on login, survives reboots)
 
 Create `~/Library/LaunchAgents/com.user.TwitDown.plist`:
 ```xml
@@ -214,8 +178,7 @@ Create `~/Library/LaunchAgents/com.user.TwitDown.plist`:
     <key>Label</key><string>com.user.TwitDown</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/path/to/venv/bin/python3</string>
-        <string>/path/to/TwitDown.py</string>
+        <string>/path/to/TwitDown/TwitDown.py</string>
     </array>
     <key>WorkingDirectory</key><string>/path/to/TwitDown</string>
     <key>RunAtLoad</key><true/>
@@ -230,13 +193,17 @@ launchctl load ~/Library/LaunchAgents/com.user.TwitDown.plist
 tail -f /tmp/TwitDown.log
 ```
 
-### Running all watcher scripts at once (Linux/macOS with tmux)
+### Windows
+
+Run all of the above inside **WSL** — TwitDown's curses TUI and shebang launcher aren't natively supported on Windows.
+
+### Running all watcher scripts at once (tmux)
 
 ```bash
 tmux new-session -d -s watchers
-tmux new-window -t watchers -n downtube   'python DownTube.py'
-tmux new-window -t watchers -n chaturdown 'python Chaturdown.py'
-tmux new-window -t watchers -n TwitDown    'python TwitDown.py'
+tmux new-window -t watchers -n downtube   './DownTube.py'
+tmux new-window -t watchers -n chaturdown './Chaturdown.py'
+tmux new-window -t watchers -n twitdown   './TwitDown.py'
 tmux attach -t watchers
 # Switch between windows: Ctrl+B then 0, 1, 2
 ```
@@ -246,28 +213,39 @@ tmux attach -t watchers
 ```
 ./Videos/X/
 └── username/
-    ├── username_(01-01-2024_14-30).mp4
-    └── username_(02-01-2024_09-15).mp4
+    ├── username_01-01-2024_14-30.mp4
+    └── username_02-01-2024_09-15.mp4
 ```
 
-Files are named `username_(DD-MM-YYYY_HH-MM).mp4`. If two broadcasts download within the same minute a counter is added: `username_(01-01-2024_14-30)_2.mp4`.
+Filenames follow `username_DD-MM-YYYY_HH-MM.mp4`, with `--restrict-filenames` applied by yt-dlp.
 
 ## State files
 
-These files are created automatically in the script's folder:
+Created automatically next to the script — none of these need to be touched by hand:
 
-| File | Purpose |
-|------|---------|
-| `twitdown_seen_ids.json` | IDs of already-downloaded broadcasts — delete this to re-download everything |
-| `twitdown_one_off_done.txt` | Marks the initial backfill as complete — delete to trigger another full scroll-back |
-| `twitdown_links.txt` | Broadcast URLs found during the last scrape |
-| `twitdown_download_log.txt` | Rolling 2-day log of downloaded filenames |
-| `twitdown_cookies.txt` | Saved X.com session cookies |
+| File / folder | Purpose |
+|---|---|
+| `X_Cookies.txt` | Saved X.com session cookies, refreshed automatically |
+| `X_UserAgent.txt` | The real User-Agent Camoufox is using — kept in sync with cookies, don't edit |
+| `X_Profile/` | Persistent Camoufox browser profile (holds your logged-in session) |
+| `X_Seen.json` | IDs of already-downloaded broadcasts — delete to re-scan and re-download everything |
+| `X_Download.log` | Rolling 2-day log of downloaded filenames |
+| `X_Watcher.log` | Full activity log (cookie refreshes, scraping, errors) |
+| `.last_update_timestamp` | Tracks when yt-dlp/deno were last auto-updated |
 
 ## Troubleshooting
 
-**No broadcasts found despite the user having them** — X.com is slow to render. Try increasing `SCROLLS` (e.g. to `15`) or `SCROLL_PAUSE` (e.g. to `8.0`). Also check your browser profile has a valid logged-in X.com session.
+TwitDown checks its requirements before the TUI ever starts and exits with a clear fix if something's missing:
 
-**Download fails** — some X broadcasts expire after a while. Run `yt-dlp <broadcast_url>` directly in your terminal to see the specific error.
+- **`camoufox is not installed`** → run `bash setup.sh`
+- **`yt-dlp not found`** → run `bash setup.sh`
+- **`Users.txt is missing`** or **`No users found in Users.txt`** → create/populate `Users.txt` as shown [above](#userstxt)
+- **`X_Cookies.txt is missing or empty`** → run `./Login.py`
+- **`deno not found`** (warning, not fatal) → yt-dlp may fail on broadcasts needing JS extraction; install deno via `setup.sh` or point `DENO_EXE` at your install
 
-**Seen IDs file getting large** — `twitdown_seen_ids.json` keeps every ID ever downloaded and never shrinks. Delete it to reset, or open it in a text editor and remove old entries manually.
+Other common issues:
+
+- **No broadcasts found despite the user having them** — check `X_Watcher.log` for scraping errors; the profile timeline may not be loading. Confirm `X_Cookies.txt` still has a valid session (re-run `./Login.py` if unsure).
+- **Download fails** — some broadcasts expire. Try `yt-dlp <broadcast_url> --cookies X_Cookies.txt` directly in your terminal to see the specific error.
+- **`X_Seen.json` getting large** — it keeps every ID ever downloaded and never shrinks on its own. Delete it to reset, or trim it manually in a text editor.
+- **Session keeps getting flagged / logged out** — make sure you haven't hand-edited `X_UserAgent.txt`, and if you're using a proxy, confirm it's reliable (a proxy that drops mid-session is worse than no proxy).
