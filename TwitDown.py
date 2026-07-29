@@ -162,7 +162,7 @@ def load_users_file(path: Path, default_interval: int, default_stop_removed: boo
                 continue
             m3 = _SECTION_LINE_RE.match(line)
             if m3:
-                section = m3.group(1).lower()
+                section = "users"
                 continue
             if section == "users":
                 users.append(_normalize_username(line))
