@@ -11,5 +11,6 @@ interval=120
 # to finish naturally instead of being cut off.
 stop_removed=false
 
-user1
+[users]
+@user1
 user2
