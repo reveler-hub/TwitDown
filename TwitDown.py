@@ -435,13 +435,13 @@ def download_broadcast(broadcast_url: str, label: str) -> bool:
     output_dir = VIDEOS_DIR_BASE / label
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # X_Watcher: Safely extract broadcast ID for logging
+    # Safely extract broadcast ID for logging
     try:
         broadcast_id = broadcast_url.split("/i/broadcasts/")[-1].split("?")[0]
     except Exception:
         broadcast_id = "unknown"
 
-    # X_Watcher: File naming and collision prevention loop
+    # File naming and collision prevention loop
     now = datetime.datetime.now()
     clean_filename = f"{label}_({now.strftime('%d-%m-%Y_%H-%M')}).mp4"
     output_path = output_dir / clean_filename
@@ -453,13 +453,13 @@ def download_broadcast(broadcast_url: str, label: str) -> bool:
 
     log(f"[{label}] 📥 Downloading {broadcast_id} → {clean_filename}")
 
-    # TwitDown: TUI State updates
+    # TUI State updates
     state["users"][label]["text"] = "⬇️ Downloading "
     state["users"][label]["color"] = 3
     state["users"][label]["extra"] = f"⬇️ {clean_filename}"
     state["footer"] = f"⚡ STATUS: Downloading broadcast from @{label}..."
 
-    # X_Watcher: Base yt-dlp arguments
+    # Base yt-dlp arguments
     cmd = YTDLP_CMD + [
         broadcast_url,
         "--cookies", str(COOKIES_FILE),
@@ -475,7 +475,7 @@ def download_broadcast(broadcast_url: str, label: str) -> bool:
         cmd += ["--proxy", PROXY]
 
     try:
-        # X_Watcher: Use direct subprocess.run with timeout and output capture
+        # Use direct subprocess.run with timeout and output capture
         result = subprocess.run(
             cmd, capture_output=True, text=True, timeout=900
         )
@@ -488,7 +488,7 @@ def download_broadcast(broadcast_url: str, label: str) -> bool:
             state["users"][label]["extra"] = "✅ Complete"
             return True
         else:
-            # X_Watcher: Truncated error logging
+            # Truncated error logging
             log(f"[{label}] ❌ yt-dlp failed: {result.stderr[:400] or result.stdout[:400]}")
             state["users"][label]["text"] = "❌ Failed     "
             state["users"][label]["color"] = 2
