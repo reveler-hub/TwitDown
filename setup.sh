@@ -2,8 +2,9 @@
 #
 # setup.sh — TwitDown setup
 # ---------------------------------------------------------------
-# Creates the venv, installs dependencies, downloads Camoufox,
-# checks for deno, and makes scripts executable.
+# Creates the venv, installs yt-dlp and nodriver, checks for
+# Chrome/Chromium, ffmpeg and deno, and makes the scripts executable.
+# Safe to run again (e.g. after upgrading from v1).
 #
 # Usage:
 #   bash setup.sh
@@ -14,55 +15,95 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 VENV_DIR="X_Venv"
+NODRIVER_VERSION="0.50.3"   # keep in step with NODRIVER_VERSION in TwitDown.py
+MISSING=0
+
+install_hint() {  # $1 = what (chromium / ffmpeg)
+    if [ "$(uname)" = "Darwin" ]; then
+        [ "$1" = chromium ] && echo "brew install --cask google-chrome" || echo "brew install $1"
+    elif command -v pacman >/dev/null 2>&1; then echo "sudo pacman -S $1"
+    elif command -v apt >/dev/null 2>&1; then echo "sudo apt install $1"
+    elif command -v dnf >/dev/null 2>&1; then echo "sudo dnf install $1"
+    else echo "install $1 with your package manager"
+    fi
+}
 
 echo "=========================================="
 echo " TwitDown Setup"
 echo "=========================================="
 
-# 1. Create venv
+# 1. Python version
+echo "[1/6] Checking Python..."
+if ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 10))'; then
+    echo "      ❌ Python 3.10 or newer is needed (found $(python3 -V 2>&1))."
+    exit 1
+fi
+echo "      ✅ $(python3 -V)"
+
+# 2. Create venv
 if [ -d "$VENV_DIR" ]; then
-    echo "[1/5] Venv '$VENV_DIR' already exists — skipping creation."
+    echo "[2/6] Venv '$VENV_DIR' already exists — reusing it."
 else
-    echo "[1/5] Creating virtual environment in '$VENV_DIR'..."
+    echo "[2/6] Creating virtual environment in '$VENV_DIR'..."
     python3 -m venv "$VENV_DIR"
 fi
 
-source "$VENV_DIR/bin/activate"
+# 3. Python dependencies
+echo "[3/6] Installing dependencies (yt-dlp, nodriver)..."
+"$VENV_DIR/bin/python" -m pip install --upgrade pip
+"$VENV_DIR/bin/python" -m pip install --upgrade yt-dlp "nodriver==$NODRIVER_VERSION"
+# nodriver 0.50.3 needs a small fix to load on Python 3.14 — TwitDown does it
+"$VENV_DIR/bin/python" -c 'import TwitDown; TwitDown.repair_nodriver_source()'
 
-# 2. Install Python dependencies
-echo "[2/5] Installing dependencies (yt-dlp, camoufox)..."
-python -m pip install --upgrade pip
-python -m pip install yt-dlp camoufox
-
-# 3. Download Camoufox browser
-echo "[3/5] Downloading Camoufox browser..."
-python -m camoufox fetch
-
-# 4. Check for deno (used by yt-dlp for JavaScript)
-echo "[4/5] Checking for deno..."
-if command -v deno >/dev/null 2>&1; then
-    echo "      ✅ deno found: $(command -v deno)"
+# 4. Chrome / Chromium
+echo "[4/6] Checking for Chrome/Chromium..."
+CHROME=""
+for c in google-chrome google-chrome-stable chromium chromium-browser chrome; do
+    if command -v "$c" >/dev/null 2>&1; then CHROME="$(command -v "$c")"; break; fi
+done
+for c in "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+         "/Applications/Chromium.app/Contents/MacOS/Chromium"; do
+    if [ -z "$CHROME" ] && [ -x "$c" ]; then CHROME="$c"; fi
+done
+if [ -n "$CHROME" ]; then
+    echo "      ✅ found: $CHROME"
 else
-    echo "      ⚠️  deno not found on PATH."
-    echo "      Installing deno..."
-    curl -fsSL https://deno.land/install.sh | sh
-    echo "      NOTE: you may need to add deno to your PATH, or set"
-    echo "      DENO_EXE in TwitDown.py to point at its install location"
-    echo "      (default: ~/.deno/bin/deno)."
+    echo "      ❌ Chrome/Chromium not found. Install it with:"
+    echo "         $(install_hint chromium)"
+    MISSING=1
 fi
 
-deactivate
+# 5. ffmpeg (yt-dlp records live broadcasts with it; TwitDown remuxes with it)
+echo "[5/6] Checking for ffmpeg..."
+if command -v ffmpeg >/dev/null 2>&1; then
+    echo "      ✅ found: $(command -v ffmpeg)"
+else
+    echo "      ❌ ffmpeg not found. Install it with:"
+    echo "         $(install_hint ffmpeg)"
+    MISSING=1
+fi
 
-# 5. Make scripts executable
-echo "[5/5] Making scripts executable..."
-chmod +x TwitDown.py 2>/dev/null || true
-chmod +x Login.py 2>/dev/null || true
+# 6. deno (used by yt-dlp for JavaScript)
+echo "[6/6] Checking for deno..."
+if command -v deno >/dev/null 2>&1 || [ -x "$HOME/.deno/bin/deno" ]; then
+    echo "      ✅ deno found"
+else
+    echo "      ⚠️  deno not found on PATH — installing it..."
+    curl -fsSL https://deno.land/install.sh | sh
+fi
+
+chmod +x TwitDown.py Login.py Login.sh 2>/dev/null || true
 
 echo "=========================================="
-echo " ✅ Setup complete!"
+if [ "$MISSING" = 1 ]; then
+    echo " ⚠️  Setup finished, but install what's marked ❌ above first."
+else
+    echo " ✅ Setup complete!"
+fi
 echo "=========================================="
-echo "Run the watcher with:"
-echo "    ./TwitDown.py"
-echo ""
-echo "First, rename Users.txt.example to Users.txt, add usernames."
-echo "Then, run ./Login.py once to log in to X and save cookies."
+echo "Next:"
+echo "  1. Add the X accounts to watch to Users.txt (under [users])."
+echo "  2. Log in once:   ./Login.py"
+echo "     (no screen? ./Login.py --import /path/to/cookies.txt)"
+echo "     Upgrading from v1? Skip this — your login is copied over."
+echo "  3. Start it:      ./TwitDown.py"
