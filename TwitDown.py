@@ -1492,7 +1492,7 @@ def draw_tui(stdscr, worker: threading.Thread, downloads: Downloads) -> None:
                 stdscr.addstr(row, 2, line[:width - 3], curses.color_pair(color))
                 row += 1
 
-            footer_row = max_y - 3
+            footer_row = min(row, max_y - 3)  # right under the users (bottom if they fill the screen)
             stdscr.addstr(footer_row, 0, "=" * width, curses.color_pair(C_CYAN))
             stdscr.addstr(footer_row + 1, 2, state["footer"][:width - 3])
             stdscr.addstr(footer_row + 2, 0, "=" * width, curses.color_pair(C_CYAN))
