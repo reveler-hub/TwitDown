@@ -101,6 +101,8 @@ else
     echo " ✅ Setup complete!"
 fi
 echo "=========================================="
+# run by ./TwitDown.py --update: the first-time steps below don't apply
+[ "${TWITDOWN_UPDATING:-}" = 1 ] && exit 0
 echo "Next:"
 echo "  1. Add the X accounts to watch to Users.txt (under [users])."
 echo "  2. Log in once:   ./Login.py"

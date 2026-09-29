@@ -17,6 +17,7 @@ A multi-user watcher and downloader for X.com (Twitter) broadcasts. Runs as a te
 - **Self-refreshing login** — log in once with `Login.py`; every cycle TwitDown saves fresh cookies (and a matching User-Agent) from its browser profile for yt-dlp
 - **New users don't flood you** — when you add someone to `Users.txt`, their older broadcasts are marked as seen instead of all downloading at once (anything from the last few hours still downloads; configurable)
 - **Auto-updating** — `yt-dlp` and `deno` upgrade themselves every few days (between downloads)
+- **Tells you about new versions** — TwitDown checks GitHub once a day and shows a notice when a new release is out; `./TwitDown.py --update` installs it
 - **Optional proxy support** — one `proxy` setting routes both the browser *and* yt-dlp through the same proxy, including proxies that need a username and password
 - **Live curses TUI** — per-user status table (checking / queued / downloading with a progress bar / offline / failed) and a status line; `Q` shuts everything down gracefully
 - **Runs without a terminal too** — under nohup, systemd or launchd it prints log lines instead of the TUI, and stops cleanly on `SIGTERM`
@@ -180,6 +181,24 @@ Each cycle, TwitDown will:
 
 Press **Q** in the TUI to shut down gracefully — TwitDown stops the downloads so their files are closed properly, keeps and remuxes what was recorded, and closes the browser. Press **Q** again to quit without waiting.
 
+## Updating TwitDown
+
+TwitDown checks GitHub for a new release once a day. When there is one, a notice appears under the status bar (or in the log, when running without a terminal):
+
+```
+🆕 TwitDown V2.2 is available — press Q, then run: ./TwitDown.py --update
+```
+
+To update, stop TwitDown and run:
+
+```bash
+./TwitDown.py --update
+```
+
+This downloads the new version with `git pull`, runs `setup.sh` to update its dependencies, and leaves your `Users.txt`, settings, login, seen broadcasts and videos alone. Then start TwitDown again. `./TwitDown.py --version` shows which version you have.
+
+If you've edited `TwitDown.py` (or another file that the update changes), `--update` stops and tells you which files — put them back with `git checkout <file>` (or set your edits aside with `git stash`) and run it again. If you downloaded TwitDown as a ZIP instead of with `git clone`, download the [latest release](https://github.com/reveler-hub/TwitDown/releases/latest) instead.
+
 ## Running in the background
 
 ### Linux / macOS — tmux (recommended)
@@ -300,7 +319,7 @@ TwitDown checks its requirements before the TUI ever starts and exits with a cle
 - **`yt-dlp is not installed`** or **`nodriver could not be installed`** → run `bash setup.sh`
 - **`Users.txt is missing`** or **`No users found in Users.txt`** → create/populate `Users.txt` as shown [above](#userstxt)
 - **`not logged in to X`** → run `./Login.py` (or `./Login.py --import cookies.txt` without a screen)
-- **`TwitDown or Login.py is already running`** → only one can use the browser profile at a time; stop the other one
+- **`TwitDown or Login.py is already running`** → only one can use the browser profile at a time; stop the other one (this includes `--update`)
 - **`deno not found`** (warning, not fatal) → yt-dlp may fail on downloads needing JS extraction; `setup.sh` installs deno
 
 Other common issues:

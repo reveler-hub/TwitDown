@@ -26,6 +26,7 @@ Usage:
     Press Q to stop cleanly (Q twice to quit without waiting).
 """
 
+import argparse
 import asyncio
 import base64
 import contextlib
@@ -48,6 +49,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.request
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -74,6 +76,11 @@ LOCK_FILE = BASE_DIR / "X_TwitDown.lock"
 UPDATE_STAMP = BASE_DIR / ".last_update_timestamp"
 CHROME_PROFILE = BASE_DIR / "X_Profile_Chromium"
 V1_PROFILE = BASE_DIR / "X_Profile"  # v1's Camoufox profile, only read for the login
+
+VERSION = "V2.1"  # must match the GitHub release tag this is published as
+GITHUB_REPO = "reveler-hub/TwitDown"
+RELEASES_URL = f"https://github.com/{GITHUB_REPO}/releases/latest"
+UPDATE_CHECK_INTERVAL = 24 * 3600  # how often to look for a new TwitDown release
 
 NODRIVER_VERSION = "0.50.3"  # the workarounds below were verified against this version
 
@@ -1344,6 +1351,96 @@ def maybe_update(settings: dict, downloads: "Downloads") -> None:
         state["footer"] = "⚡ STATUS: ⚠️ Some updates failed (see log)"
 
 
+# ========================== TWITDOWN UPDATES ==========================
+
+def version_tuple(tag: str) -> tuple[int, ...]:
+    """'V2.1' → (2, 1). Trailing zeros are dropped so V2 == V2.0."""
+    nums = [int(n) for n in re.findall(r"\d+", tag)]
+    while len(nums) > 1 and nums[-1] == 0:
+        nums.pop()
+    return tuple(nums) or (0,)
+
+
+def latest_release(proxy: str = "") -> tuple[str, str] | None:
+    """(tag, page URL) of the newest TwitDown release on GitHub, or None if
+    it can't be checked (offline, rate-limited, SOCKS proxy, ...)."""
+    handlers = []
+    if proxy:
+        if urlparse(proxy).scheme.startswith("socks"):
+            return None  # Python's built-in HTTP client can't use SOCKS proxies
+        handlers.append(urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest",
+        headers={"Accept": "application/vnd.github+json", "User-Agent": f"TwitDown/{VERSION}"})
+    try:
+        with urllib.request.build_opener(*handlers).open(req, timeout=15) as r:
+            data = json.load(r)
+        return data["tag_name"], data.get("html_url") or RELEASES_URL
+    except Exception as e:
+        log(f"Update check failed: {type(e).__name__}: {e}")
+        return None
+
+
+def check_for_update(proxy: str) -> None:
+    """Note a newer release in state["update"] (shown by the TUI). Never
+    changes anything — updating is ./TwitDown.py --update."""
+    release = latest_release(proxy)
+    if release and version_tuple(release[0]) > version_tuple(VERSION):
+        if state.get("update") != release[0]:
+            log(f"⬆️ TwitDown {release[0]} is available (this is {VERSION}) — "
+                f"stop TwitDown and run: ./TwitDown.py --update   ({release[1]})")
+        state["update"] = release[0]
+
+
+def self_update() -> None:
+    """./TwitDown.py --update: git pull, then setup.sh for any new
+    dependencies. Refuses (with a way forward) rather than touching the
+    user's own edits."""
+    print(f"TwitDown {VERSION}", flush=True)
+    if not (BASE_DIR / ".git").exists() or not shutil.which("git"):
+        fatal("this copy of TwitDown wasn't installed with git, so it can't update itself",
+              [f"Download the latest version from {RELEASES_URL}",
+               "and copy Users.txt, Settings.txt, the X_* files and Videos/ into it,",
+               f"or re-install with: git clone https://github.com/{GITHUB_REPO}.git"])
+    ensure_lock("the update")
+
+    def git(*args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(["git", "-C", str(BASE_DIR), *args], capture_output=True, text=True)
+
+    if not git("symbolic-ref", "-q", "HEAD").stdout.strip():
+        fatal("this copy is set to a fixed version (e.g. with git checkout V1)",
+              ["To switch back to the latest version: git checkout main",
+               "then run: ./TwitDown.py --update"])
+    print("🔎 Checking GitHub for updates...", flush=True)
+    fetched = git("fetch", "--tags")
+    if fetched.returncode:
+        fatal("couldn't reach GitHub", [line for line in fetched.stderr.strip().splitlines()[-3:]])
+    behind = git("rev-list", "--count", "HEAD..@{u}")
+    if behind.returncode:
+        fatal("this copy isn't following a GitHub branch", ["Run: git checkout main"])
+    if behind.stdout.strip() == "0":
+        print(f"✅ Already up to date ({VERSION}).")
+        return
+
+    pulled = git("pull", "--ff-only")
+    if pulled.returncode:
+        edited = [line[3:] for line in git("status", "--porcelain", "--untracked-files=no").stdout.splitlines()]
+        fix = [line for line in pulled.stderr.strip().splitlines()[-4:]]
+        if edited:
+            fix += ["", "You've edited: " + ", ".join(edited),
+                    "Put those files back as they were (git checkout <file>), or set your edits",
+                    "aside with: git stash — then run ./TwitDown.py --update again."]
+        fatal("the update couldn't be applied", fix)
+
+    m = re.search(r'^VERSION = "([^"]+)"', (BASE_DIR / "TwitDown.py").read_text(), re.MULTILINE)
+    print(f"⬇️  Updated {VERSION} → {m.group(1) if m else 'the latest version'}")
+    print("📦 Running setup.sh to update dependencies...", flush=True)
+    subprocess.run(["bash", str(BASE_DIR / "setup.sh")], check=False,
+                   env={**os.environ, "TWITDOWN_UPDATING": "1"})
+    print()
+    print("✅ Update complete. Start TwitDown again with: ./TwitDown.py")
+
+
 # ========================== WORKER ==========================
 
 def handle_found(found: Found, checked: set[str], settings: dict, downloads: Downloads,
@@ -1388,10 +1485,15 @@ def worker_thread(settings: dict, chrome: str, users: list[str], interval: int,
     checked = load_checked_users(users)
     sync_user_rows(users)
     last_users_check = time.time()
+    last_release_check = 0.0
     attempt = 0
 
     while state["running"]:
         attempt += 1
+
+        if time.time() - last_release_check >= UPDATE_CHECK_INTERVAL:
+            last_release_check = time.time()
+            threading.Thread(target=check_for_update, args=(settings["proxy"],), daemon=True).start()
 
         # ---- Reload Users.txt ----
         if time.time() - last_users_check >= interval:
@@ -1492,10 +1594,16 @@ def draw_tui(stdscr, worker: threading.Thread, downloads: Downloads) -> None:
                 stdscr.addstr(row, 2, line[:width - 3], curses.color_pair(color))
                 row += 1
 
-            footer_row = min(row, max_y - 3)  # right under the users (bottom if they fill the screen)
+            notice = (f"🆕 TwitDown {state['update']} is available — press Q, then run: ./TwitDown.py --update"
+                      if state.get("update") else "")
+            footer_rows = 4 if notice else 3
+            # right under the users (at the bottom if they fill the screen)
+            footer_row = min(row, max_y - footer_rows)
             stdscr.addstr(footer_row, 0, "=" * width, curses.color_pair(C_CYAN))
             stdscr.addstr(footer_row + 1, 2, state["footer"][:width - 3])
-            stdscr.addstr(footer_row + 2, 0, "=" * width, curses.color_pair(C_CYAN))
+            if notice:
+                stdscr.addstr(footer_row + 2, 2, notice[:width - 3], curses.color_pair(C_GREEN) | curses.A_BOLD)
+            stdscr.addstr(footer_row + footer_rows - 1, 0, "=" * width, curses.color_pair(C_CYAN))
             stdscr.refresh()
         except curses.error:
             pass
@@ -1691,6 +1799,14 @@ def run_without_tui(worker: threading.Thread, downloads: Downloads) -> None:
 
 
 def main() -> None:
+    ap = argparse.ArgumentParser(description="Watch X profiles for broadcasts and download them.")
+    ap.add_argument("--update", action="store_true",
+                    help="update TwitDown to the latest version from GitHub, then exit")
+    ap.add_argument("--version", action="version", version=f"TwitDown {VERSION}")
+    if ap.parse_args().update:
+        self_update()
+        return
+
     try:
         settings, chrome, users, interval, stop_removed = _startup_checks()
     except KeyboardInterrupt:
@@ -1700,7 +1816,7 @@ def main() -> None:
         sys.exit(1)
     videos_dir = resolve_dir(settings["videos_dir"])
     videos_dir.mkdir(parents=True, exist_ok=True)
-    log(f"TwitDown 2 started — {len(users)} user(s), browser {chrome}")
+    log(f"TwitDown {VERSION} started — {len(users)} user(s), browser {chrome}")
 
     seen, seen_lock = load_seen(), threading.Lock()
     downloads = Downloads(videos_dir, settings["max_downloads"], settings["proxy"], seen, seen_lock)
