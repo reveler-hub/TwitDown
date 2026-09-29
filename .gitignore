@@ -1,0 +1,20 @@
+# Session / login data — never publish these
+X_Cookies.txt
+X_UserAgent.txt
+X_Profile/
+X_Profile_Chromium/
+
+# Your settings and TwitDown's state (created on first start)
+Settings.txt
+X_Seen.json
+X_State.json
+X_TwitDown.lock
+.last_update_timestamp
+*.tmp
+
+# Local environment and output
+X_Venv/
+Videos/
+__pycache__/
+*.log
+*.log.old
